@@ -92,8 +92,33 @@ void MPI_UpdateColNNZs(Element *pivotRow,
   }
 }
 
+int countNNZ(struct Row *rows, int numRows)
+{
+  int i,count=0;
+  for (i=0;i<numRows;++i) {
+    count +=rows[i].nnz;
+  }
+  return count;
+}
+
+void bunchRows(struct Row *rows, int numRows)
+{
+  int i;
+  int fragCount=0,noFrag=0;
+  for (i=0;i<numRows;++i) {
+    if (rows[i].frag) {
+      ++fragCount;
+      bunchRow(&rows[i]);
+    }
+    else {
+      ++noFrag;
+    }
+  }
+    printf("c: %d n: %d\n",fragCount,noFrag);
+}
+
 #define TIME_START clock_gettime(CLOCK_MONOTONIC,&timer);start=timer.tv_sec;startNS=timer.tv_nsec;
-#define TIME_END(x) clock_gettime(CLOCK_MONOTONIC,&timer);if (rank>2000) {x+=(timer.tv_sec-start)+(1.0e-9)*(timer.tv_nsec-startNS);}
+#define TIME_END(x) clock_gettime(CLOCK_MONOTONIC,&timer);if (rank>3000) {x+=(timer.tv_sec-start)+(1.0e-9)*(timer.tv_nsec-startNS);}
 
 int mainLoop(struct Row *rows,
 	     int numRows,
@@ -119,8 +144,12 @@ int mainLoop(struct Row *rows,
   printf("%d %d\n",g_r,mallinfo().uordblks);  
   while (1) {
 
-    if (g_r ==0)
-      printf("%d\n",rank);
+    if (rank%100 == 0) {
+      bunchRows(rows,numRows);
+      if (g_r ==0) {
+	printf("%d %d\n",rank,countNNZ(rows,numRows));
+      }
+    }
     
     TIME_START;
     findPivot(colNNZs,rows,numRows,&myPivot);
@@ -151,7 +180,7 @@ int mainLoop(struct Row *rows,
     free(pivotRow);
     free(colNNZDeltas);
     ++rank;
-    if (rank > 2100)
+    if (rank > 3100)
       break;
   }
 

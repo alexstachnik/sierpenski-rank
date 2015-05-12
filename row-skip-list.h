@@ -11,6 +11,7 @@ struct Row {
   struct Node *llist;
   int numLayers;
   int nnz;
+  int frag;
   struct Node *arrStart,*arrEnd;
   struct RandState st;
 };
@@ -32,6 +33,7 @@ void makeNode(struct Row *row,
   int numLayers,i;
   struct Node *newNode,*oldPtr;
 
+  row->frag=1;
   row->nnz=row->nnz+1;
 
   numLayers = randNumLayers(row);
@@ -72,6 +74,7 @@ void initRow(struct Row* row)
   
   row->numLayers=1;
   row->nnz=0;
+  row->frag=0;
   row->arrStart=NULL;
   row->arrEnd=NULL;
 
@@ -328,6 +331,7 @@ void bunchRow(struct Row *row)
   row->llist=newLList;
   row->arrEnd=memEnd;
   row->numLayers=numLayers;
+  row->frag=0;
 }
 
 #endif
