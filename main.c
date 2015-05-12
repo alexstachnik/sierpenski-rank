@@ -1,9 +1,13 @@
 
 #include <stdio.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <limits.h>
 #include <assert.h>
 #include <stdlib.h>
-#include <mpi.h>
+//#include <mpi.h>
+#include "mpiStubs.h"
 
 #include <time.h>
 
@@ -80,6 +84,59 @@ void eliminateCol(Element pivot,
   }
 }
 
+void writeRows(struct Row* rows,
+	       int numRows,
+	       int width)
+{
+  int i;
+  char filename[255];
+  FILE *fout;
+  sprintf(filename,"checkpoints/chkpt%d.dat",g_r);
+  fout=open(filename,O_CREAT|O_WRONLY|O_TRUNC,S_IRWXU);
+  assert(fout != -1);
+
+  write(fout,&numRows,sizeof(int));
+  write(fout,&width,sizeof(int));
+
+  for (i=0;i<numRows;++i) {
+    bunchRow(&rows[i]);
+    write(fout,&rows[i],sizeof(struct Row));
+    write(fout,rows[i].arrStart,rows[i].arrEnd-rows[i].arrEnd);
+  }
+
+  close(fout);
+}
+
+void readRows(struct Row** rowPtr, int *numRowsOut, int *width)
+{
+  int i,numRows;
+  char filename[255];
+  size_t rowSize;
+  FILE *fout;
+  struct Row *rows;
+  sprintf(filename,"checkpoints/chkpt%d.dat",g_r);
+  fout=open(filename,O_RDONLY);
+  assert(fout != -1);
+
+  read(fout,&numRows,sizeof(int));
+  read(fout,width,sizeof(int));
+
+  rows=malloc(sizeof(struct Row)*numRows);
+  *rowPtr=rows;
+  *numRowsOut=numRows;
+
+  for (i=0;i<numRows;++i) {
+    read(fout,&rows[i],sizeof(struct Row));
+    rowSize=rows[i].arrEnd-rows[i].arrStart;
+    rows[i].llist=malloc(rowSize);
+    rows[i].arrStart=rows[i].llist;
+    rows[i].arrEnd=rows[i].arrStart+rowSize;
+    read(fout,rows[i].llist,rowSize);
+  }
+
+  close(fout);
+}
+
 void MPI_UpdateColNNZs(Element *pivotRow,
 		       int *colNNZDeltas,
 		       int rowLen,
@@ -116,9 +173,6 @@ void bunchRows(struct Row *rows, int numRows)
   }
     printf("c: %d n: %d\n",fragCount,noFrag);
 }
-
-#define TIME_START clock_gettime(CLOCK_MONOTONIC,&timer);start=timer.tv_sec;startNS=timer.tv_nsec;
-#define TIME_END(x) clock_gettime(CLOCK_MONOTONIC,&timer);if (rank>3000) {x+=(timer.tv_sec-start)+(1.0e-9)*(timer.tv_nsec-startNS);}
 
 int mainLoop(struct Row *rows,
 	     int numRows,
@@ -180,8 +234,9 @@ int mainLoop(struct Row *rows,
     free(pivotRow);
     free(colNNZDeltas);
     ++rank;
-    if (rank > 3100)
-      break;
+    if (rank % 200 == 0 && rank > 0) {
+      writeRows(rows,numRows,width);
+    }
   }
 
   if (g_r==0) {
@@ -219,19 +274,24 @@ int main(int argc, char** argv)
   assert(argc == 2);
   test();
 
-  numPolyCoeffs=readPoly(argv[1],&polyCoeffs);
-  width=1+getPos(polyCoeffs[numPolyCoeffs-1]);
-  computeDensity(width,g_np,g_r,&startRow,&endRow);
-  //printf("r, start, end: %d %d %d\n",g_r,startRow,endRow);
-
-  numRows=endRow-startRow;
-  rows=malloc(sizeof(struct Row)*numRows);
-  for (i=0;i<numRows;++i) 
-    initRow(&rows[i]);
-  fillRows(rows,numPolyCoeffs,polyCoeffs,startRow,endRow);
-  free(polyCoeffs);
-
-  rank=mainLoop(rows,numRows,width);
+  if (strcmp(argv[1],"-")==0) {
+    readRows(&rows,&numRows,&width);
+    mainLoop(rows,numRows,width);
+  } else {
+    numPolyCoeffs=readPoly(argv[1],&polyCoeffs);
+    width=1+getPos(polyCoeffs[numPolyCoeffs-1]);
+    computeDensity(width,g_np,g_r,&startRow,&endRow);
+    //printf("r, start, end: %d %d %d\n",g_r,startRow,endRow);
+    
+    numRows=endRow-startRow;
+    rows=malloc(sizeof(struct Row)*numRows);
+    for (i=0;i<numRows;++i) 
+      initRow(&rows[i]);
+    fillRows(rows,numPolyCoeffs,polyCoeffs,startRow,endRow);
+    free(polyCoeffs);
+    
+    rank=mainLoop(rows,numRows,width);
+  }
   if (g_r == 0) {
     printf("Rank: %d\n", rank);
   }
