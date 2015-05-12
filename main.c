@@ -1,5 +1,8 @@
 
 #include <stdio.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <limits.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -88,8 +91,8 @@ void writeRows(struct Row* rows,
   int i;
   char filename[255];
   FILE *fout;
-  sprintf(filename,"chkpt%d.dat",g_r);
-  fout=open(filename,O_CREAT|O_WRONLY|O_TRUNC);
+  sprintf(filename,"checkpoints/chkpt%d.dat",g_r);
+  fout=open(filename,O_CREAT|O_WRONLY|O_TRUNC,S_IRWXU);
   assert(fout != -1);
 
   write(fout,&numRows,sizeof(int));
@@ -111,8 +114,8 @@ void readRows(struct Row** rowPtr, int *numRowsOut, int *width)
   size_t rowSize;
   FILE *fout;
   struct Row *rows;
-  sprintf(filename,"chkpt%d.dat",g_r);
-  fout=open(filename,O_CREAT|O_WRONLY|O_TRUNC);
+  sprintf(filename,"checkpoints/chkpt%d.dat",g_r);
+  fout=open(filename,O_RDONLY);
   assert(fout != -1);
 
   read(fout,&numRows,sizeof(int));
@@ -205,7 +208,7 @@ int mainLoop(struct Row *rows,
     free(pivotRow);
     free(colNNZDeltas);
     ++rank;
-    if (rank > 200) {
+    if (rank % 200 == 0 && rank > 0) {
       writeRows(rows,numRows,width);
     }
 
